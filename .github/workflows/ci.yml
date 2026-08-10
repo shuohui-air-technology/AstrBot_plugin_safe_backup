@@ -1,0 +1,159 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Compile without bytecode output
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          files = [Path("main.py"), *Path("safe_backup").rglob("*.py"), *Path("scripts").glob("*.py"), *Path("tests").rglob("*.py")]
+          for path in files:
+              compile(path.read_text(encoding="utf-8"), str(path), "exec")
+          leftovers = list(Path(".").rglob("__pycache__"))
+          if leftovers:
+              raise SystemExit(f"bytecode cache created: {leftovers}")
+          print(f"Compiled {len(files)} Python files without bytecode output")
+          '@ | python -B -
+
+      - name: Run all synthetic tests
+        run: python -B -m unittest discover -s tests -v
+
+      - name: Parse PowerShell scripts with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $errors = $null
+          Get-ChildItem scripts -Filter '*.ps1' | ForEach-Object {
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errors)
+            if ($errors) { $errors | Out-String | Write-Error }
+          }
+          if ($errors) { exit 1 }
+
+      - name: Parse PowerShell scripts with PowerShell 7
+        shell: pwsh
+        run: |
+          $errors = $null
+          Get-ChildItem scripts -Filter '*.ps1' | ForEach-Object {
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errors)
+            if ($errors) { $errors | Out-String | Write-Error }
+          }
+          if ($errors) { exit 1 }
+
+      - name: Metadata and privacy gates
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import re
+
+          root = Path.cwd()
+          metadata = (root / "metadata.yaml").read_text(encoding="utf-8")
+          required = {
+              "name": "astrbot_plugin_safe_backup",
+              "display_name": "AstrBot 自动化安全冷备份插件",
+              "version": "v0.1.0-beta",
+              "astrbot_version": '">=4.26,<5"',
+          }
+          for key, value in required.items():
+              if f"{key}: {value}" not in metadata:
+                  raise SystemExit(f"metadata mismatch: {key}")
+
+          root_files = {
+              "main.py", "metadata.yaml", "_conf_schema.json", "requirements.txt",
+              "README.md", "README_EN.md", "SECURITY.md", "CHANGELOG.md",
+              "CONTRIBUTING.md", "LICENSE", "PUBLISHING_AGENT_PROMPT.md",
+              "logo.svg", ".gitignore",
+          }
+          text_suffixes = {".py", ".ps1", ".md", ".yaml", ".yml", ".json", ".txt", ".svg"}
+          patterns = {
+              "machine-specific user path": re.compile(r"[A-Za-z]:\\Users\\[^\\\s]+"),
+              "machine-specific application path": re.compile(r"[A-Za-z]:\\qq(?:\\|$)", re.I),
+              "protected legacy task identity": re.compile(re.escape("AstrBot NapCat Read-" + "Only Backup")),
+              "assigned secret literal": re.compile(r"(?:api[_-]?key|token|passkey|cookie|password)\s*[:=]\s*[\"'][^\"']+[\"']", re.I),
+          }
+          failures = []
+          for path in root.rglob("*"):
+              if not path.is_file() or ".git" in path.parts:
+                  continue
+              rel = path.relative_to(root)
+              allowed = (
+                  rel.as_posix() in root_files
+                  or (rel.parts[0] == "safe_backup" and path.suffix.lower() == ".py")
+                  or (rel.parts[0] == "scripts" and path.suffix.lower() == ".ps1")
+                  or rel.as_posix() == "scripts/release_packager.py"
+                  or (rel.parts[0] == "tests" and path.suffix.lower() == ".py")
+                  or (rel.parts[:2] == (".github", "workflows") and path.suffix.lower() in {".yml", ".yaml"})
+                  or (rel.parts[:2] == ("docs", "images") and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"})
+              )
+              if not allowed:
+                  failures.append(f"{rel}: file is outside the publish allowlist")
+                  continue
+              raw = path.read_bytes()
+              if raw.startswith(b"SQLite format 3\x00") or raw.startswith(b"PK\x03\x04"):
+                  failures.append(f"{rel}: database/archive magic is forbidden")
+              if path.suffix.lower() not in text_suffixes and path.name not in {"LICENSE", ".gitignore"}:
+                  continue
+              content = path.read_text(encoding="utf-8", errors="strict")
+              for label, pattern in patterns.items():
+                  if pattern.search(content):
+                      failures.append(f"{rel}: {label}")
+          if failures:
+              raise SystemExit("privacy gate failed:\n" + "\n".join(failures))
+          print("metadata and privacy gate passed")
+          '@ | python -B -
+
+      - name: Validate and build release asset
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'astrbot-safe-backup-release'
+          & powershell -NoProfile -File scripts/build_release_package.ps1 -SourceDirectory $PWD.Path -OutputDirectory $output -ValidateOnly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & powershell -NoProfile -File scripts/build_release_package.ps1 -SourceDirectory $PWD.Path -OutputDirectory $output
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          @'
+          import hashlib
+          import os
+          from pathlib import Path
+          import zipfile
+
+          output = Path(os.environ["RUNNER_TEMP"]) / "astrbot-safe-backup-release"
+          name = "astrbot_plugin_safe_backup-v0.1.0-beta.zip"
+          archive = output / name
+          checksum = output / (name + ".sha256")
+          if not archive.is_file() or not checksum.is_file() or archive.stat().st_size >= 16 * 1024 * 1024:
+              raise SystemExit("release asset or checksum missing/oversized")
+          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          if checksum.read_text(encoding="ascii").strip() != f"{digest}  {name}":
+              raise SystemExit("release checksum mismatch")
+          with zipfile.ZipFile(archive) as bundle:
+              names = bundle.namelist()
+          required = {"main.py", "metadata.yaml", "_conf_schema.json", "safe_backup/engine.py", "scripts/task_launcher.ps1"}
+          if not required <= set(names):
+              raise SystemExit("release ZIP layout is incomplete")
+          if any(item.startswith(("tests/", ".git/", ".superpowers/")) or ".." in Path(item).parts or ":" in item for item in names):
+              raise SystemExit("release ZIP contains unsafe or excluded entry")
+          print(f"release asset validated: {archive.stat().st_size} bytes")
+          '@ | python -B -
