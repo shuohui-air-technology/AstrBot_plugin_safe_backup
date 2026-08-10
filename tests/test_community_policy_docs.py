@@ -102,7 +102,7 @@ class CommunityPolicyDocumentationTests(unittest.TestCase):
     def test_readme_leads_with_one_click_installation_and_setup(self):
         self.assertIn("# AstrBot 自动化安全冷备份插件", self.zh)
         self.assertIn(
-            "一款面向追求绝对安全的AstrBot用户的冷备份插件，以高效且谨慎的手段备份您的敏感数据",
+            "A cold backup plugin for security-conscious AstrBot users, efficiently and cautiously backing up your sensitive data",
             self.zh,
         )
         self.assertLess(self.zh.index("## 安装与初始化"), self.zh.index("## 主要功能"))
