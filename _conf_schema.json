@@ -1,0 +1,46 @@
+{
+  "destination_path": {
+    "description": "备份目标目录",
+    "type": "string",
+    "hint": "留空后直接发送 /safe_backup setup，会使用本机专属的默认目录；也可填写源目录以外、非 UNC、当前不存在或完全为空的本地绝对路径。setup 是管理员显式操作，加载插件不会创建任务。",
+    "default": ""
+  },
+  "retention_count": {
+    "description": "可信归档的最大保留数量（默认 5）",
+    "type": "int",
+    "hint": "最多保留多少份由本插件生成、已写入权威状态且再次完整验证通过的归档，默认 5。外来、损坏、身份不确定或无法证明归属的 ZIP 永不自动删除，因此实际数量可能暂时超过此值。",
+    "default": 5
+  },
+  "schedule_weekday": {
+    "description": "每周首次尝试日",
+    "type": "string",
+    "options": [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday"
+    ],
+    "default": "Sunday"
+  },
+  "schedule_time": {
+    "description": "每日触发时间",
+    "type": "string",
+    "hint": "本地时间，24 小时 HH:MM 格式。失败后每天重试，最多持续到本周期结束。",
+    "default": "12:00"
+  },
+  "napcat_enabled": {
+    "description": "同时备份 NapCat 配置",
+    "type": "bool",
+    "hint": "NapCat 默认关闭。仅收录经过版本验证的配置白名单，不收录 QQ AppData、二进制、缓存、日志或运行数据库。",
+    "default": false
+  },
+  "napcat_root": {
+    "description": "NapCat 根目录",
+    "type": "string",
+    "hint": "仅在启用 NapCat 时必填，必须是本地绝对路径。",
+    "default": ""
+  }
+}

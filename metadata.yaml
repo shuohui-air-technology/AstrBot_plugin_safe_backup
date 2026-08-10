@@ -1,0 +1,7 @@
+name: astrbot_plugin_safe_backup
+display_name: AstrBot 自动化安全冷备份插件
+desc: 面向追求安全的 AstrBot 用户的 Windows 严格只读冷备份插件；一键初始化、可视进度，NapCat 配置可选且默认关闭。目前仅支持 AstrBot >=4.26,<5。
+version: v0.1.0-beta
+author: shuohui-air-technology
+repo: https://github.com/shuohui-air-technology/astrbot_plugin_safe_backup
+astrbot_version: ">=4.26,<5"
