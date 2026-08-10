@@ -1,5 +1,7 @@
 # AstrBot 自动化安全冷备份插件
 
+![python](https://img.shields.io/badge/python-3.12%2B-blue) ![astrbot](https://img.shields.io/badge/astrbot-%3E%3D4.26%2C%3C5-green) ![platform](https://img.shields.io/badge/platform-Windows-blue) ![license](https://img.shields.io/badge/license-MIT-gray) ![version](https://img.shields.io/badge/version-v0.1.0--beta-orange)
+
 一款面向追求绝对安全的AstrBot用户的冷备份插件，以高效且谨慎的手段备份您的敏感数据。
 
 > `v0.1.0-beta`：目前仅支持 AstrBot `>=4.26,<5` 与本地 Windows 冷备份。请先进行测试，再用于重要数据。
