@@ -290,7 +290,7 @@ class PluginControlPlaneTests(unittest.TestCase):
         self._write_owned_state()
         with patch("main.load_state", wraps=plugin_main.load_state) as loader:
             self.run_command(self.plugin.status(self.event))
-        loader.assert_called_once_with(self.destination)
+        loader.assert_called_once_with(self.destination.resolve())
 
     def test_reparse_probe_oserror_fails_closed(self):
         with patch.object(Path, "lstat", side_effect=PermissionError("denied")):
@@ -441,14 +441,16 @@ class PluginControlPlaneTests(unittest.TestCase):
         self.assertEqual(state["source_fingerprints"], before["source_fingerprints"])
         self.assertNotIn("last_success_archive", state)
 
+        resolved_astrbot = str(self.astrbot.resolve())
+        resolved_destination = str(self.destination.resolve())
         args = engine.parse_args([
-            "--astrbot-root", str(self.astrbot), "--destination", str(self.destination),
+            "--astrbot-root", resolved_astrbot, "--destination", resolved_destination,
             "--keep", "6", "--week-start", "0", "--schedule-time", "13:15",
             "--scheduled", "--scheduled-probe", "--artifact-digest", expected.artifact_digest,
         ])
         self.assertEqual(engine.scheduled_probe(args, now=dt.datetime.now().astimezone()).code, 10)
         run_args = engine.parse_args([
-            "--astrbot-root", str(self.astrbot), "--destination", str(self.destination),
+            "--astrbot-root", resolved_astrbot, "--destination", resolved_destination,
             "--keep", "6", "--week-start", "0", "--schedule-time", "13:15",
             "--scheduled", "--artifact-digest", expected.artifact_digest,
         ])

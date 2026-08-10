@@ -111,7 +111,7 @@ class SourceIdentityAndDriftTests(RegressionFixture):
         self.assertFalse(self.dest.exists())
 
     def test_critical_directory_drift_is_failure(self):
-        source = self.astr / "data" / "config" / "core.json"
+        source = (self.astr / "data" / "config" / "core.json").resolve()
         changed = False
 
         def mutating_reader(path):
@@ -127,7 +127,7 @@ class SourceIdentityAndDriftTests(RegressionFixture):
     def test_noncritical_directory_drift_is_degraded(self):
         cache = self.astr / "data" / "temp"
         cache.mkdir()
-        source = cache / "cache.bin"
+        source = (cache / "cache.bin").resolve()
         source.write_bytes(b"x")
         changed = False
 
@@ -143,6 +143,7 @@ class SourceIdentityAndDriftTests(RegressionFixture):
 
     def test_napcat_config_drift_is_always_critical(self):
         nap, config_file = self._make_napcat()
+        config_file = config_file.resolve()
         changed = False
 
         def mutating_reader(path):

@@ -73,7 +73,7 @@ class SetupFixture(unittest.TestCase):
         return inventory
 
     def test_blank_destination_resolves_under_user_profile(self):
-        self.assertEqual(self.config.destination.parent, self.home / "AstrBotSafeBackups")
+        self.assertEqual(self.config.destination.parent, self.home.resolve() / "AstrBotSafeBackups")
         self.assertEqual(self.config.destination.name, self.config.source_fingerprint[:12])
 
     def test_initialize_destination_writes_authoritative_initialized_journal(self):
