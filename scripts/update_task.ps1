@@ -40,6 +40,9 @@ try {
         exit 0
     }
     $resolved = Resolve-TaskInputs -TaskName $TaskName -Description $Description -TaskFingerprint $TaskFingerprint -LauncherPath $LauncherPath -LauncherArgumentsJson $LauncherArgumentsJson
+    # The proposed task must bind the executable files present for this
+    # explicit update.  The expected-old task intentionally keeps its historic
+    # digest so upgrades remain possible only through this transition.
     if ($Operation -ne 'inspect' -and (Get-SafeBackupArtifactDigest) -cne $resolved.LauncherArguments[-2]) { throw 'Plugin artifact digest mismatch.' }
     $expected = if ($ExpectedLauncherPath) {
         Resolve-TaskInputs -TaskName $TaskName -Description $Description -TaskFingerprint $TaskFingerprint -LauncherPath $ExpectedLauncherPath -LauncherArgumentsJson $ExpectedLauncherArgumentsJson

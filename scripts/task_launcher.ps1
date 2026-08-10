@@ -40,5 +40,7 @@ try {
     exit [int]$process.ExitCode
 }
 catch {
+    # A failure before the visible runner can be launched has no safe detail to
+    # display from this hidden context.  The next scheduled trigger retries.
     exit 3
 }

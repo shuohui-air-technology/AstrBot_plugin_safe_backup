@@ -6,6 +6,10 @@ param(
     [string]$PythonPath = 'python'
 )
 
+# This release-authoring wrapper creates astrbot_plugin_safe_backup-v0.1.0-beta.zip
+# plus its .sha256 sidecar only in its explicit output directory; it makes no changes to AstrBot. The Python helper
+# applies the exact allowlist and object-identity gates before it writes only
+# the explicit output directory.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 try {
