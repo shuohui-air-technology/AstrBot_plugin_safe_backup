@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">AstrBot Safe Backup</title>
+  <desc id="desc">A shield protecting an archive</desc>
+  <defs>
+    <linearGradient id="shield" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#36c2a6"/>
+      <stop offset="1" stop-color="#1677d2"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#shield)" d="M128 14 224 50v68c0 62-37 105-96 124-59-19-96-62-96-124V50l96-36Z"/>
+  <rect x="71" y="77" width="114" height="95" rx="14" fill="#fff" opacity=".96"/>
+  <path fill="#17324d" d="M84 90h88v22H84zm0 31h88v38H84z"/>
+  <circle cx="153" cy="140" r="7" fill="#36c2a6"/>
+  <path fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="12" d="m102 190 18 17 37-40"/>
+</svg>
