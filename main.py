@@ -191,8 +191,8 @@ class SafeBackupPlugin(Star):
     """Read-only control plane. No method in this class performs a backup."""
 
     def __init__(self, context: Context, config: AstrBotConfig, *,
-                 task_adapter=None, waiter_launcher=None,
-                 archive_verifier=None,
+                 task_adapter=None, waiter_launcher: Callable[[SetupConfig, Mapping[str, Any]], None] | None = None,
+                 archive_verifier: Callable[[Path, str, Mapping[str, str]], bool] | None = None,
                  user_profile: Path | None = None, plugin_dir: Path | None = None,
                  python_path: Path | None = None, compatibility_gate=None):
         super().__init__(context)
