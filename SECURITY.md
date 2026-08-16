@@ -28,7 +28,7 @@ Provide the smallest sanitized reproduction and say whether source data could ha
 
 ## Extreme security scenarios recorded here
 
-The cases in this section are extreme or malicious-attack scenarios. **而这些问题被认为不会在主要使用场景中出现。** They are recorded here so that maintainers and advanced users can assess the boundary; this document **不会用来隐藏普通用户容易遇到的功能缺陷**. Conditions that can normally make a backup fail belong in README's "已知问题：可能导致备份失败" section and must remain fail-closed.
+The cases in this section are extreme or malicious-attack scenarios. **而这些问题被认为不会在主要使用场景中出现。** They are recorded here so that maintainers and advanced users can assess the boundary; this document **不会用来隐藏普通用户容易遇到的功能缺陷**. Conditions that can normally make a backup fail belong in README's “已知问题：可能导致备份失败” section and must remain fail-closed.
 
 ### Same Windows account can defeat normal user-mode trust
 
