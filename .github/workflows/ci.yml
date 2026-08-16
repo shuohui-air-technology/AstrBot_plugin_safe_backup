@@ -85,7 +85,7 @@ jobs:
               "main.py", "metadata.yaml", "_conf_schema.json", "requirements.txt",
               "README.md", "README_EN.md", "SECURITY.md", "CHANGELOG.md",
               "CONTRIBUTING.md", "LICENSE", "PUBLISHING_AGENT_PROMPT.md",
-              "logo.svg", ".gitignore",
+              "logo.svg", ".gitignore", "docs/release-readiness-v0.1.0-beta.md",
           }
           text_suffixes = {".py", ".ps1", ".md", ".yaml", ".yml", ".json", ".txt", ".svg"}
           patterns = {
