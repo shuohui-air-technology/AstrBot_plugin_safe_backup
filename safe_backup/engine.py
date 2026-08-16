@@ -111,6 +111,9 @@ class Result:
     retention_candidates: Optional[list[dict[str, object]]] = None
     publication_disposition: str = "never_published"
     archive_sha256: str | None = None
+    # Manual snapshots are fully verified publications, but they must not
+    # advance the scheduler's cycle-bound success pointer.
+    counts_as_scheduled_success: bool = True
 
     def __post_init__(self):
         if self.publication_disposition not in PUBLICATION_DISPOSITIONS:
@@ -334,6 +337,8 @@ def parse_args(argv=None):
                         help="read-only scheduler decision; internal launcher use only")
     parser.add_argument("--artifact-digest", metavar="SHA256")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--manual", action="store_true",
+                        help="publish a verified manual snapshot without advancing the scheduled cycle")
     parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--verify", metavar="ARCHIVE")
     ns = parser.parse_args(argv)
@@ -344,6 +349,8 @@ def parse_args(argv=None):
         parser.error("--schedule-time must be HH:MM in 24-hour local time")
     if ns.preflight and (ns.scheduled or ns.scheduled_probe or ns.force or ns.verify):
         parser.error("--preflight conflicts with scheduled, scheduled-probe, force, and verify")
+    if ns.manual and (ns.scheduled or ns.scheduled_probe or ns.preflight or ns.verify):
+        parser.error("--manual conflicts with scheduled, scheduled-probe, preflight, and verify")
     if ns.verify and (ns.scheduled or ns.scheduled_probe or ns.force):
         parser.error("--verify conflicts with scheduled, scheduled-probe, and force")
     if ns.scheduled_probe and (not ns.scheduled or ns.force):
@@ -839,6 +846,23 @@ def napcat_items(root: Path, opener):
     return items, current, whitelist
 
 
+def compatible_napcat_whitelist_transition(previous, current, version: str) -> bool:
+    """Allow only additive JSON config files within the same active version."""
+    if previous == current:
+        return True
+    if not isinstance(previous, list) or not isinstance(current, list) or not isinstance(version, str):
+        return False
+    old = {name.casefold() for name in previous}
+    new = {name.casefold() for name in current}
+    if not old or not old <= new:
+        return False
+    added = new - old
+    if not added:
+        return False
+    prefix = f"napcat/versions/{version.casefold()}/resources/app/napcat/config/"
+    return all(name.startswith(prefix) and name.endswith(".json") for name in added)
+
+
 def database_layout(items, opener=windows_shared_read):
     mains = []
     for item in items:
@@ -867,6 +891,71 @@ def database_layout(items, opener=windows_shared_read):
                 or any(lowered.startswith(main + "-") for main in main_keys)):
             raise BackupError("unknown SQLite sidecar or super-journal candidate", 1)
     return {"mains": sorted(mains), "sidecars": sorted(sidecars)}
+
+
+# A database layout is part of the trust boundary, but some applications keep
+# a bounded rolling set of SQLite snapshots.  The transition checker is
+# generic: it learns no machine-specific directory or filename.  It only
+# admits a balanced rename within the same directory and filename template
+# when a single date/time token is replaced.  Missing/added static databases,
+# sidecar changes, and arbitrary renames remain fail-closed.
+_ROTATION_TOKEN = re.compile(
+    r"(?<!\d)(?:19|20|21)\d{2}(?:[-_.]?\d{2}){1,2}"
+    r"(?:[-_.T]?\d{2}(?:[-_:]?\d{2}){0,2})?(?!\d)",
+    re.IGNORECASE,
+)
+
+
+def _rotation_signature(name: str):
+    if not isinstance(name, str) or "/" not in name:
+        return None
+    parent, _, leaf = name.rpartition("/")
+    matches = list(_ROTATION_TOKEN.finditer(leaf))
+    if len(matches) != 1:
+        return None
+    match = matches[0]
+    token = match.group(0)
+    if len(re.sub(r"\D", "", token)) < 8:
+        return None
+    template = leaf[:match.start()] + "{rotation}" + leaf[match.end():]
+    return parent.casefold(), template.casefold()
+
+
+def compatible_database_layout_transition(previous, current) -> bool:
+    """Return whether *current* is a safe rolling SQLite-name transition.
+
+    This does not inspect or adopt files.  The normal inventory, identity,
+    post-copy stability, SQLite integrity, and archive verification gates still
+    run after this compatibility check.
+    """
+    if previous == current:
+        return True
+    if not isinstance(previous, dict) or not isinstance(current, dict):
+        return False
+    if set(previous) != {"mains", "sidecars"} or set(current) != {"mains", "sidecars"}:
+        return False
+    old_sidecars = {name.casefold() for name in previous["sidecars"]}
+    new_sidecars = {name.casefold() for name in current["sidecars"]}
+    if old_sidecars != new_sidecars:
+        return False
+    old_mains = {name.casefold() for name in previous["mains"]}
+    new_mains = {name.casefold() for name in current["mains"]}
+    removed = old_mains - new_mains
+    added = new_mains - old_mains
+    if not removed or not added:
+        return False
+    groups = {}
+    for kind, names in (("removed", removed), ("added", added)):
+        for name in names:
+            signature = _rotation_signature(name)
+            if signature is None:
+                return False
+            groups.setdefault(signature, {"removed": set(), "added": set()})[kind].add(name)
+    return bool(groups) and all(
+        bucket["removed"] and bucket["added"]
+        and len(bucket["removed"]) == len(bucket["added"])
+        for bucket in groups.values()
+    )
 
 
 def required_free_space(source_bytes: int, database_family_bytes: int, napcat_bytes: int) -> int:
@@ -2847,6 +2936,7 @@ def _run(args, process_probe=default_process_probe, source_opener=windows_shared
     staging_created = False
     staging_owned = None
     destination = args.destination
+    manual_mode = bool(getattr(args, "manual", False))
     napcat_enabled = args.napcat_root is not None
     week_start_index = getattr(args, "week_start_index", getattr(args, "week_start", 6))
     week_start_name = WEEKDAY_NAMES.get(week_start_index)
@@ -2912,7 +3002,11 @@ def _run(args, process_probe=default_process_probe, source_opener=windows_shared
             phase_hook(name, stage, stage_ledger)
 
     def persist_failed_attempt(code):
-        if not state_trusted or state is None or cycle is None or code not in {1, 2}:
+        # A manual snapshot must not turn an automatic FULL_SUCCESS/INITIALIZED
+        # state into FAILED/DEGRADED.  Its failure is reported by the visible
+        # runner, while the scheduler's authoritative cycle remains untouched.
+        if (manual_mode or not state_trusted or state is None
+                or cycle is None or code not in {1, 2}):
             return True
         try:
             assert_safe_output_path(destination)
@@ -3022,11 +3116,12 @@ def _run(args, process_probe=default_process_probe, source_opener=windows_shared
         enter_phase("layout-check")
         layout = database_layout(astr, source_opener)
         if state and not initialized_state:
-            if state.get("database_layout") != layout:
+            if not compatible_database_layout_transition(state.get("database_layout"), layout):
                 raise BackupError("SQLite candidate layout drift", 1)
             if state.get("napcat_version") != version:
                 raise BackupError("NapCat version layout drift", 1)
-            if state.get("napcat_whitelist") != napcat_whitelist:
+            if not compatible_napcat_whitelist_transition(
+                    state.get("napcat_whitelist"), napcat_whitelist, version):
                 raise BackupError("NapCat whitelist layout drift; use a new empty destination", 1)
             registered = destination / "managed" / state["owner_uuid"] / state["last_successful_archive"]
             registered_token = _path_token(registered, regular=True, single_link=True)
@@ -3207,6 +3302,37 @@ def _run(args, process_probe=default_process_probe, source_opener=windows_shared
         current_final_owned = final_after_verify
         emit_progress("publish", "progress", 1, 1, "items", "final_verified")
         check_process(process_probe, args.astrbot_root)
+        if manual_mode:
+            # Keep the scheduled state exactly as it was.  If a user selected
+            # a brand-new empty manual destination, create only the normal
+            # INITIALIZED ledger so a second manual run can reuse that target;
+            # INITIALIZED has no successful cycle/archive and therefore cannot
+            # satisfy the scheduler's success probe.
+            if state is None:
+                manual_state = initial_state(
+                    owner_uuid=owner,
+                    source_fingerprints=fingerprints,
+                    config_fingerprint=config_fp,
+                    week_start=week_start_index,
+                    schedule_time=schedule_time,
+                    artifact_digest=(getattr(args, "artifact_digest", None)
+                                     or "0" * 64),
+                    now=now,
+                )
+                enter_phase("state-commit")
+                commit_state(destination, manual_state, state_writer)
+                state_committed = True
+                state = load_state(destination)
+                if (state is None or state.get("last_result") != "INITIALIZED"
+                        or state.get("owner_uuid") != owner):
+                    raise BackupError("manual initialization state could not be proven", 3)
+            emit_progress("publish", "complete", 1, 1)
+            return Result(
+                0, archive=final, retention_candidates=[],
+                message="manual snapshot completed; scheduled cycle unchanged",
+                publication_disposition="full_success", archive_sha256=final_hash,
+                counts_as_scheduled_success=False,
+            )
         retention_candidates = []
         new_state = {"schema": SCHEMA, "schema_version": SCHEMA, "managed_by": GENERATOR,
                      "state_namespace": "community-v1", "owner_uuid": owner,

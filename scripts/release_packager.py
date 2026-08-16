@@ -28,7 +28,7 @@ PACKAGE_FILES = (
 RUNTIME_SCRIPTS = (
     "scripts/install_task.ps1", "scripts/update_task.ps1", "scripts/remove_task.ps1",
     "scripts/task_common.ps1", "scripts/task_launcher.ps1",
-    "scripts/run_backup_visible.ps1", "scripts/start_task.ps1",
+    "scripts/run_backup_visible.ps1", "scripts/start_task.ps1", "scripts/manual_backup.ps1",
 )
 TOOLING = {"scripts/build_release_package.ps1", "scripts/release_packager.py"}
 ENTRIES = ROOT_FILES + PACKAGE_FILES + RUNTIME_SCRIPTS

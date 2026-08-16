@@ -111,7 +111,7 @@ class SourceIdentityAndDriftTests(RegressionFixture):
         self.assertFalse(self.dest.exists())
 
     def test_critical_directory_drift_is_failure(self):
-        source = (self.astr / "data" / "config" / "core.json").resolve()
+        source = self.astr / "data" / "config" / "core.json"
         changed = False
 
         def mutating_reader(path):
@@ -127,7 +127,7 @@ class SourceIdentityAndDriftTests(RegressionFixture):
     def test_noncritical_directory_drift_is_degraded(self):
         cache = self.astr / "data" / "temp"
         cache.mkdir()
-        source = (cache / "cache.bin").resolve()
+        source = cache / "cache.bin"
         source.write_bytes(b"x")
         changed = False
 
@@ -143,7 +143,6 @@ class SourceIdentityAndDriftTests(RegressionFixture):
 
     def test_napcat_config_drift_is_always_critical(self):
         nap, config_file = self._make_napcat()
-        config_file = config_file.resolve()
         changed = False
 
         def mutating_reader(path):
@@ -186,13 +185,14 @@ class SourceIdentityAndDriftTests(RegressionFixture):
         second = engine.run(self.args(nap=nap), process_probe=lambda _root: False)
         self.assertEqual(second.code, 1)
 
-    def test_napcat_whitelist_layout_drift_requires_new_empty_destination(self):
+    def test_napcat_whitelist_addition_within_same_version_is_accepted(self):
         nap, config_file = self._make_napcat()
         first = engine.run(self.args(nap=nap), process_probe=lambda _root: False)
         self.assertEqual(first.code, 0, first.message)
         (config_file.parent / "new-account.json").write_text("{}", "utf-8")
         second = engine.run(self.args(nap=nap), process_probe=lambda _root: False)
-        self.assertEqual(second.code, 1)
+        self.assertEqual(second.code, 0, second.message)
+        self.assertTrue(engine.verify_archive(second.archive))
 
     def _make_napcat(self):
         nap = self.base / "NapCat"

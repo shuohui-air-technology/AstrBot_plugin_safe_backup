@@ -218,7 +218,10 @@ def render_backup(args, *, engine_runner: Callable = engine.run, writer: TextIO 
         if not started:
             started = True
             _write(writer, "AstrBot 自动化安全冷备份")
-            attempt = "计划任务" if getattr(args, "scheduled", False) else "首次或手动"
+            if getattr(args, "manual", False):
+                attempt = "手动快照（不计入自动备份周期）"
+            else:
+                attempt = "计划任务" if getattr(args, "scheduled", False) else "首次或手动"
             _write(writer, f"尝试类型：{attempt}；源数据只读。")
         title = PHASE_TITLES[event.phase]
         value = f"{event.current}/{event.total}" if event.total else "进行中"
@@ -242,6 +245,7 @@ def render_backup(args, *, engine_runner: Callable = engine.run, writer: TextIO 
     destination = Path(args.destination)
     trusted = _trusted_state(destination)
     state_matches = False
+    manual_archive_matches = False
     if isinstance(trusted, dict) and engine.is_strict_archive_name(archive_name):
         owner = trusted.get("owner_uuid")
         state_digest = trusted.get("last_successful_archive_sha256")
@@ -263,12 +267,36 @@ def render_backup(args, *, engine_runner: Callable = engine.run, writer: TextIO 
                 state_matches = actual_digest == state_digest
         except (OSError, ValueError, TypeError, engine.BackupError):
             state_matches = False
+    if (not getattr(result, "counts_as_scheduled_success", True)
+            and isinstance(trusted, dict)
+            and engine.is_strict_archive_name(archive_name)):
+        try:
+            owner = trusted.get("owner_uuid")
+            uuid.UUID(owner)
+            expected = destination / "managed" / owner / archive_name
+            path_matches = engine._key(Path(result.archive)) == engine._key(expected)
+            result_digest = getattr(result, "archive_sha256", None)
+            if path_matches and isinstance(result_digest, str) and engine.re.fullmatch(
+                    r"[0-9a-f]{64}", result_digest):
+                archive_token = engine._path_token(expected, regular=True, single_link=True)
+                actual_digest, archive_token = engine._hash_regular(expected, archive_token)
+                final_token = engine._path_token(expected, regular=True, single_link=True)
+                manual_archive_matches = (
+                    actual_digest == result_digest
+                    and final_token.same_content_identity(archive_token)
+                )
+        except (OSError, ValueError, TypeError, engine.BackupError):
+            manual_archive_matches = False
+    counts_as_scheduled_success = getattr(result, "counts_as_scheduled_success", True)
     valid_success = (
         code == 0 and result.publication_disposition == "full_success"
-        and engine.is_strict_archive_name(archive_name) and state_matches
+        and engine.is_strict_archive_name(archive_name)
+        and (state_matches if counts_as_scheduled_success else manual_archive_matches)
     )
     if valid_success:
         _write(writer, f"归档已验证：{archive_name}")
+        if not counts_as_scheduled_success:
+            _write(writer, "本次为手动快照：自动备份周期状态未改变。")
         _write(writer, "备份成功")
         logged = _write_redacted_log(destination, events, code, "success")
         if trusted is not None and not logged:

@@ -4,6 +4,8 @@
 
 A cold backup plugin for security-conscious AstrBot users, efficiently and cautiously backing up your sensitive data.
 
+这里的“追求绝对安全”是设计方向，而不是无法兑现的绝对保证：本插件会在不能安全证明条件成立时拒绝备份，而不会为了“尽量成功”降低检查标准。
+
 > `v0.1.0-beta`：目前仅支持 AstrBot `>=4.26,<5` 与本地 Windows 冷备份。请先进行测试，再用于重要数据。
 
 ## 安装与初始化
@@ -50,13 +52,39 @@ A cold backup plugin for security-conscious AstrBot users, efficiently and cauti
 /safe_backup verify latest
 ```
 
+### 4. 本机终端手动控制台
+
+如果你想在本机主动执行一次备份，或查看下一次计划时间，可以运行插件包中的：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<插件目录>\scripts\manual_backup.ps1"
+```
+
+这个窗口会显示计划任务是否仍是受管任务、下一次计划尝试时间、计划目标与手动目标、归档 ZIP 数量和总大小、最新归档 SHA-256 是否与状态绑定、状态修订号、暂存/日志/诊断数量以及目标卷可用空间。它还会明确提示当前版本是“Windows 冷备份”，AstrBot 必须先正常退出。
+
+菜单中的“立即备份”会直接打开同一套七阶段可视化终端，并使用一次性强制运行标记。因此同一个周期内连续执行两次不会因为计划任务的静默 no-op 而卡住；第二次仍会重新完成一次完整校验。手动快照会单独发布并验证，不更新自动备份的成功周期、状态指针或下一次计划时间。窗口不会自行停止、暂停或强杀 AstrBot，进程仍在运行时会安全失败。
+
+手动快照也不会触发自动归档保留清理，因此实际 ZIP 数量可能暂时超过 `retention_count`；手动快照与自动周期完全分开记录。
+
+“更换本次手动目标”只保存一个绑定当前任务指纹的本机偏好，不会修改 Windows 计划任务，也不会接管已有非空目录。新目标必须是不存在或完全为空的本地目录；菜单会把计划目标和手动目标分开显示。要永久改变计划任务的目标，请先在插件设置中修改 `destination_path`，再显式执行 `/safe_backup task update`，不要直接编辑任务动作。
+
+也可以使用无菜单形式：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<插件目录>\scripts\manual_backup.ps1" -Action Status -NoPause
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<插件目录>\scripts\manual_backup.ps1" -Action Run -NoPause
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<插件目录>\scripts\manual_backup.ps1" -Action SetDestination -Destination "D:\SafeBackups\AstrBot" -NoPause
+```
+
+最后一条只保存手动目标，不会立即启动备份；路径变更后可再执行 `-Action Run`。这些命令只应在本机终端执行，不要把包含真实路径的命令复制到聊天群或公开 Issue。
+
 ## 主要功能
 
 - AstrBot 的源数据只作普通共享读取；不会修改、移动、删除、修复、解锁或恢复任何源文件时间戳。
 - 不停止、暂停、重启或强杀 AstrBot；无法确定它已停止时，本次备份失败关闭。
 - 尝试完整收录 AstrBot `data`：配置、插件、插件数据、知识库、附件、索引、数据库、空目录与未来新增的普通文件。
 - 源 SQLite 仅作为普通文件读取；只有复制到备份目标的隔离副本才会进行规范化和 `integrity_check`。
-- 两轮清点、文件身份、大小、修改时间和 SHA256 检查会捕捉备份中的变化；关键变化、占用或布局漂移不会静默生成正式包。
+- 两轮清点、文件身份、大小、修改时间和 SHA256 检查会捕捉备份中的变化；关键变化、占用或布局漂移不会静默生成正式包。已建立成功基线后，插件可以识别同一目录、同一命名模板的成组 SQLite 日期/序号轮换；其它布局变化仍会失败关闭。
 - ZIP 发布前会检查路径安全、CRC、清单 SHA256、数据库完整性与恢复布局。
 - 默认不会联网、上传、遥测、使用 NAS/UNC 或自动恢复。历史归档仅按下文的严格归属与完整性门禁自动保留最多 5 份。
 
@@ -64,7 +92,7 @@ A cold backup plugin for security-conscious AstrBot users, efficiently and cauti
 
 NapCat 功能默认关闭，普通 AstrBot 用户无需配置它。只有在插件设置中明确开启并填写本地根目录后，才会备份经过版本元数据验证的配置白名单。
 
-该可选包不包含程序二进制、缓存、日志、临时文件、运行数据库或账号运行数据。NapCat 版本或目录布局变化时会暂停备份并等待人工确认，不会自行猜测新版目录。
+该可选包不包含程序二进制、缓存、日志、临时文件、运行数据库或账号运行数据。同一 NapCat 版本下新增的、位于受控 config 目录且通过 JSON 校验的配置文件可以纳入清单；版本变化、配置删除或其它目录布局变化仍会暂停备份并等待人工确认，不会自行猜测新版目录。
 
 ## 设置项
 
@@ -130,8 +158,7 @@ NapCat 功能默认关闭，普通 AstrBot 用户无需配置它。只有在插�
 - 目标磁盘可用空间不足，或归档最终验证未通过；
 - 路径、插件包、计划任务或状态的身份核验无法完成。
 
-遇到这些情况，请保留现场并检查 `/safe_backup status` 与终端中的固定提示；不要手工接管或删除隔离内容。
-针对某些极端的同账户恶意攻击场景，由于这些情境被认为不容易在实际使用场景中遇到，且对他们的修正是困难且易引发其他重大问题的，故将这些统一记录在 [SECURITY.md](SECURITY.md)，而没有做实际修复
+遇到这些情况，请保留现场并检查 `/safe_backup status` 与终端中的固定提示；不要手工接管或删除隔离内容。极端的同账户恶意攻击场景统一记录在 [SECURITY.md](SECURITY.md)，不会用它来隐藏普通用户容易遇到的问题。
 
 ## 隐私与安全边界
 

@@ -32,19 +32,45 @@ This literal Chinese terminal text means “Backup successful.”
 
 The success window closes after 30 seconds; a failure window remains for 120 seconds. Press any key to close either window early. A scheduled trigger that only checks an already-successful weekly state remains silent.
 
+### Local visible manual console
+
+To start one manual backup or inspect the next scheduled time in a local terminal, run the script included in the plugin package:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<PLUGIN_DIR>\scripts\manual_backup.ps1"
+```
+
+The panel shows whether the exact task is still owned, its next run time, the scheduled and manual targets, ZIP count and total size, whether the newest archive SHA-256 matches authoritative state, state revision, staging/log/diagnostic counts, and free space on the destination volume. It also states that this release is a Windows cold backup and AstrBot must be closed normally first.
+
+The **run now** menu entry opens the same seven-stage visible renderer and uses a one-shot force flag. Repeating it in the same cycle therefore does not get stuck behind the scheduled silent no-op; the second attempt still performs a complete verification. A manual snapshot is published and verified separately: it does not advance the automatic cycle, state pointer, or next scheduled time. The tool never stops, pauses, or kills AstrBot. If the process is still running, the backup fails safely.
+
+Manual snapshots also do not trigger automatic retention cleanup, so the actual ZIP count may temporarily exceed `retention_count`; manual snapshots and scheduled cycles are tracked separately.
+
+**Change manual target** saves a local preference bound to the current task fingerprint. It does not modify the Scheduled Task and never adopts a non-empty foreign directory. A new target must be missing or completely empty, and the panel keeps the scheduled target and manual target visibly separate. To permanently change the scheduled destination, edit `destination_path` in the plugin settings and explicitly run `/safe_backup task update`; do not edit task arguments directly.
+
+Non-interactive examples:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<PLUGIN_DIR>\scripts\manual_backup.ps1" -Action Status -NoPause
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<PLUGIN_DIR>\scripts\manual_backup.ps1" -Action Run -NoPause
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<PLUGIN_DIR>\scripts\manual_backup.ps1" -Action SetDestination -Destination "D:\SafeBackups\AstrBot" -NoPause
+```
+
+The last command only saves the manual target; it does not start a backup. Run `-Action Run` afterwards. Use these commands only in a local terminal; do not paste commands containing real paths into chat or public issues.
+
 ## Main features
 
 - Source data receives ordinary shared reads only: no source file is modified, moved, deleted, repaired, unlocked, or timestamp-restored.
 - AstrBot is never controlled by the backup. If it is running or its process state cannot be proved, the run fails closed.
 - The complete AstrBot `data` tree is attempted, including configuration, plugins, plugin data, knowledge bases, attachments, indexes, databases, empty directories, and future ordinary files.
 - Source SQLite is read as files only. Normalization and `integrity_check` run solely on target-side isolated copies.
-- Two inventories plus identity, size, mtime, and SHA-256 checks catch source changes. Critical drift, locks, and layout changes cannot silently publish a formal archive.
+- Two inventories plus identity, size, mtime, and SHA-256 checks catch source changes. After a trusted baseline exists, a balanced SQLite rotation within one directory and filename template may be recognized; other layout changes still fail closed and cannot silently publish a formal archive.
 - Before publication, the ZIP passes path, CRC, manifest SHA256, database-integrity, and restore-layout checks.
 - No network upload, telemetry, NAS/UNC target, automatic restore, or automatic deletion of historical archives is provided.
 
 ### Optional NapCat configuration package
 
-NapCat support is disabled by default. Normal AstrBot users do not need to configure it. When explicitly enabled with a local root, only a version-validated configuration allowlist is included. Binaries, caches, logs, temporary files, runtime databases, and account runtime data are excluded. A version or layout change pauses backup for manual review; the plugin never guesses a newer directory.
+NapCat support is disabled by default. Normal AstrBot users do not need to configure it. When explicitly enabled with a local root, only a version-validated configuration allowlist is included. Binaries, caches, logs, temporary files, runtime databases, and account runtime data are excluded. Additions of validated JSON files inside the controlled config directory are accepted for the same active version; version changes, removals, and other layout changes pause backup for manual review.
 
 ## Settings
 

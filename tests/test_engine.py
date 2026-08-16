@@ -13,6 +13,82 @@ from unittest import mock
 from safe_backup import engine
 
 
+class DatabaseLayoutTransitionTests(unittest.TestCase):
+    def test_generic_rolling_sqlite_names_are_accepted(self):
+        old = {
+            "mains": [
+                "AstrBot/data/main.db",
+                "AstrBot/data/plugin_data/example/backups/snapshot_2026-08-15_120000.sqlite",
+            ],
+            "sidecars": ["AstrBot/data/main.db-wal"],
+        }
+        current = {
+            "mains": [
+                "AstrBot/data/main.db",
+                "AstrBot/data/plugin_data/example/backups/snapshot_2026-08-16_120000.sqlite",
+            ],
+            "sidecars": ["AstrBot/data/main.db-wal"],
+        }
+        self.assertTrue(engine.compatible_database_layout_transition(old, current))
+
+    def test_arbitrary_database_addition_or_removal_is_rejected(self):
+        old = {"mains": ["AstrBot/data/main.db"], "sidecars": []}
+        current = {"mains": ["AstrBot/data/main.db", "AstrBot/data/new.db"], "sidecars": []}
+        self.assertFalse(engine.compatible_database_layout_transition(old, current))
+
+    def test_sidecar_change_is_rejected_even_for_rolling_names(self):
+        old = {
+            "mains": ["AstrBot/data/roll_20260815.db"],
+            "sidecars": ["AstrBot/data/roll_20260815.db-wal"],
+        }
+        current = {
+            "mains": ["AstrBot/data/roll_20260816.db"],
+            "sidecars": ["AstrBot/data/roll_20260816.db-wal"],
+        }
+        self.assertFalse(engine.compatible_database_layout_transition(old, current))
+
+    def test_unbalanced_rotation_is_rejected(self):
+        old = {
+            "mains": [
+                "AstrBot/data/roll_20260815.db",
+                "AstrBot/data/roll_20260814.db",
+            ],
+            "sidecars": [],
+        }
+        current = {
+            "mains": [
+                "AstrBot/data/roll_20260816.db",
+                "AstrBot/data/roll_20260815.db",
+                "AstrBot/data/roll_20260814.db",
+            ],
+            "sidecars": [],
+        }
+        self.assertFalse(engine.compatible_database_layout_transition(old, current))
+
+
+class NapCatWhitelistTransitionTests(unittest.TestCase):
+    def test_same_version_additive_json_config_is_accepted(self):
+        old = [
+            "NapCat/versions/9.9.26-44498/resources/app/napcat/config/base.json",
+        ]
+        current = old + [
+            "NapCat/versions/9.9.26-44498/resources/app/napcat/config/onebot11_123.json",
+        ]
+        self.assertTrue(engine.compatible_napcat_whitelist_transition(old, current, "9.9.26-44498"))
+
+    def test_removed_or_other_version_config_is_rejected(self):
+        old = [
+            "NapCat/versions/9.9.26-44498/resources/app/napcat/config/base.json",
+        ]
+        self.assertFalse(engine.compatible_napcat_whitelist_transition(
+            old, [], "9.9.26-44498"))
+        self.assertFalse(engine.compatible_napcat_whitelist_transition(
+            old,
+            old + ["NapCat/versions/9.9.27-00001/resources/app/napcat/config/new.json"],
+            "9.9.26-44498",
+        ))
+
+
 class EngineFixture(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="safe-backup-test-")

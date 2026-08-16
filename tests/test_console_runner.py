@@ -59,6 +59,32 @@ class ConsoleRunnerTests(unittest.TestCase):
         self.assertTrue(all(f"[{index}/7]" in text for index in range(1, 8)))
         self.assertIn("\n备份成功\n", text)
 
+    def test_manual_snapshot_success_does_not_require_or_claim_scheduler_binding(self):
+        from safe_backup.console_runner import render_backup
+
+        output = io.StringIO()
+        _result, state = self._trusted_success()
+
+        def manual_runner(_args, *, progress_sink=None):
+            from safe_backup.progress import ProgressEvent
+            for index, phase in enumerate((
+                "preflight", "inventory", "copy", "sqlite", "archive", "verify", "publish",
+            ), 1):
+                progress_sink(ProgressEvent(phase, index, 1, 1, "items", "complete", "ok"))
+            result = self._trusted_success()[0]
+            result.counts_as_scheduled_success = False
+            return result
+
+        manual_args = type("Args", (), {
+            "destination": self.destination, "scheduled": False, "manual": True,
+        })()
+        with mock.patch("safe_backup.console_runner._trusted_state", return_value=state):
+            code = render_backup(manual_args, engine_runner=manual_runner, writer=output,
+                                 key_probe=lambda: True, sleep=lambda _: None)
+        self.assertEqual(code, 0)
+        self.assertIn("自动备份周期状态未改变", output.getvalue())
+        self.assertIn("\n备份成功\n", output.getvalue())
+
     def test_failure_is_actionable_and_sanitized(self):
         from safe_backup.console_runner import render_backup
 
