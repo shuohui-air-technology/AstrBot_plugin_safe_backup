@@ -75,7 +75,7 @@ jobs:
               "name": "astrbot_plugin_safe_backup",
               "display_name": "AstrBot 自动化安全冷备份插件",
               "version": "v0.1.0-beta",
-              "astrbot_version": '">=4.26,<5"',
+              "astrbot_version": '\">=4.26,<5\"',
           }
           for key, value in required.items():
               if f"{key}: {value}" not in metadata:
