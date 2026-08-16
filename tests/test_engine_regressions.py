@@ -24,7 +24,7 @@ TZ = dt.timezone(dt.timedelta(hours=8))
 class RegressionFixture(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="safe-backup-regression-")
-        self.base = Path(self.temp.name)
+        self.base = Path(self.temp.name).resolve()
         self.astr = self.base / "AstrBot"
         (self.astr / "data" / "config").mkdir(parents=True)
         (self.astr / "data" / "config" / "core.json").write_text('{"safe":true}', "utf-8")

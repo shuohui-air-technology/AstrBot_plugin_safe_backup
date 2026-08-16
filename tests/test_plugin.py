@@ -89,7 +89,7 @@ class _FakeTaskAdapter:
 class PluginControlPlaneTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
-        self.base = Path(self.temporary.name)
+        self.base = Path(self.temporary.name).resolve()
         self.astrbot = self.base / "SyntheticAstrBot"
         (self.astrbot / "data").mkdir(parents=True)
         self.destination = self.base / "NewBackupDestination"

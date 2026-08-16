@@ -25,7 +25,7 @@ from safe_backup.setup import (
 class SetupFixture(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="safe-backup-setup-")
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.home = self.root / "home"
         self.home.mkdir()
         self.astrbot = self.root / "astrbot"
